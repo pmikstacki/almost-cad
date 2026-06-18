@@ -17,6 +17,7 @@ FROM debian:bookworm-slim AS libredwg-builder
 ARG LIBREDWG_VERSION=0.13.4
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential wget ca-certificates \
+      pkg-config \
       libpcre2-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt
