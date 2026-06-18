@@ -23,8 +23,12 @@ WORKDIR /app
 RUN corepack enable
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Re-run install in the builder so the web app's local node_modules/.bin is
+# fully populated (the deps stage's hoist may not symlink nuxt locally).
+RUN pnpm install --no-frozen-lockfile --filter @modulecad/web --filter @modulecad/modules
 # Build just the web app. Output lands in apps/web/.output
-RUN pnpm --filter @modulecad/web build
+WORKDIR /app/apps/web
+RUN pnpm exec nuxt build
 
 # ── Stage 3: minimal runtime ──────────────────────────────────────────
 FROM node:24-alpine AS runner
