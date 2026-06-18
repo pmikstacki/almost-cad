@@ -19,6 +19,12 @@ export default defineEventHandler(async (event) => {
     return
   }
 
+  // Internal converter callback: authed by a shared secret checked in the
+  // handler itself (POST /api/jobs/:id/update), not by a user session.
+  if (url.pathname.match(/\/api\/jobs\/[^/]+\/update$/)) {
+    return
+  }
+
   // Verify session; set event.context.user for downstream handlers.
   const session = await auth.api.getSession({ headers: event.headers })
   if (!session) {

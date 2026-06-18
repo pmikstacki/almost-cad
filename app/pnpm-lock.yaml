@@ -107,6 +107,12 @@ importers:
         specifier: ^3.1.1
         version: 3.4.0(vite@5.4.21(@types/node@24.12.4)(sass@1.98.0)(terser@5.48.0))
 
+  apps/dwg-converter:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.700.0
+        version: 3.1071.0
+
   apps/web:
     dependencies:
       '@aws-sdk/client-s3':

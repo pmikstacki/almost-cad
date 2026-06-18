@@ -79,6 +79,58 @@ once 1.0.0 ships. Until then, `0.x` increments track phases.
   Nitro routes emitted, better-auth client bundled, pages rendered
   (total 4.99 MB / 1.31 MB gzip).
 
+### Added — Phase 2: Storage + DWG pipeline
+
+- `server/utils/storage.ts` — RustFS / S3-compatible storage helper built on
+  `@aws-sdk/client-s3` with `forcePathStyle: true`. Exposes `ensureBucket`,
+  `presignPut`, `presignGet`, `publicObjectUrl`. Content-addressed keys are
+  the caller's responsibility (see keys.ts).
+- `server/utils/keys.ts` — content-addressed key builders (`dwg/<hash>.dwg`,
+  `dxf/<hash>.dxf`, `pdf/<jobid>.pdf`, `preview/<hash>.svg`, `logos/<hash>.<ext>`)
+  and a `sha256Hex` helper. Content addressing sidesteps CDN cache-invalidation
+  problems and de-duplicates uploads.
+- `server/utils/jobs.ts` — in-memory job event bus (`subscribe`/`emit`) and a
+  `streamJobEvents` helper that bridges to H3's `createEventStream` for SSE.
+  Phase 7 may swap for Redis Pub/Sub if multi-replica.
+- `POST /api/uploads/presign` (now real) — mints a presigned PUT against the
+  public RustFS endpoint, inserts a `drawings` row with status='uploaded'.
+  Browser uploads directly to RustFS, bypassing Nuxt (no body-size limits).
+- `POST /api/drawings/:id/finalize` (now real) — HEADs the upload, streams +
+  hashes the bytes, promotes to `dwg/<hash>.dwg` (or `dxf/<hash>.dxf`),
+  deletes the temp key. DXF → status='ready' immediately; DWG → dispatches to
+  the dwg-converter and emits SSE progress.
+- `GET /api/jobs/:id/events` — SSE stream of conversion progress; auto-closes
+  on terminal status. (Requires Traefik buffering disabled — Phase 7.)
+- `POST /api/jobs/:id/update` — internal callback the dwg-converter POSTs to
+  when conversion completes. Authed by a shared `x-dwg-converter-secret`
+  header rather than a user session; whitelisted in the auth middleware.
+- `GET /api/drawings/:id/dxf` — returns a presigned GET URL for the drawing's
+  DXF (original or converted) so the viewer's `url` prop can fetch it.
+- `apps/dwg-converter/` — new GPL-3.0-or-later microservice. Plain `node:http`
+  server wrapping the LibreDWG CLI (`dwg2dxf`, `dxf2dwg`). Endpoints:
+  `GET /health`, `POST /convert { inputKey, outputKey, direction, bucket,
+  callbackUrl }`. Pulls input from RustFS, converts, uploads output, POSTs
+  progress to the web app's callback. Idempotent (skips if output exists).
+  Framework-free to keep the GPL boundary obvious.
+- `apps/web/Dockerfile` — multi-stage Nuxt build producing a self-contained
+  Nitro server image with a `/api/health` healthcheck.
+- `apps/dwg-converter/Dockerfile` — multi-stage image that builds LibreDWG
+  from source on Debian (glibc, the well-trodden path) and bundles the
+  binaries alongside a Node runtime.
+- `docker-compose.yml` — Coolify-aligned four-service stack: `web` +
+  `rustfs` public (`SERVICE_FQDN_*`), `postgres` + `dwg-converter` internal.
+  Bind-mounts RustFS data to `/srv/rustfs/data` for independent backup.
+  `pgdata` named volume for Postgres.
+
+### Verified (Phase 2)
+
+- `pnpm --filter @modulecad/web build` compiles cleanly with all new routes
+  emitted (`api/jobs/_id/events.get.mjs`, `api/jobs/_id/update.post.mjs`,
+  `api/uploads/presign.post.mjs` now real). Total 6.4 MB / 1.61 MB gzip.
+- `node --check apps/dwg-converter/src/server.js` — syntax OK.
+- `docker compose -f docker-compose.yml config --quiet` — structurally valid
+  (only unset-env warnings, expected since Coolify injects secrets at deploy).
+
 ## [0.0.0] — pre-fork baseline
 
 Upstream `mlightcad/cad-viewer` @ HEAD of `main` (2026-06-18), MIT-licensed.

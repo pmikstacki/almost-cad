@@ -1,0 +1,95 @@
+# moduleCad — Coolify Docker Compose deployment.
+#
+# Build pack: Docker Compose (Coolify auto-detects this file).
+# Proxy:      Coolify-managed Traefik.
+# SSL:        Let's Encrypt HTTP-01 for the two public FQDNs.
+#
+# Service visibility:
+#   web, rustfs   -> public (SERVICE_FQDN_*)
+#   postgres,
+#   dwg-converter -> internal only (no FQDN; reachable by service name)
+#
+# See ../../GUIDE.md and ../../UPSTREAM.md for the architecture and
+# license boundaries.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      # Coolify injects the resolved FQDN(s) here at deploy time.
+      - SERVICE_FQDN_WEB
+      # Postgres — internal service name on the shared Docker network.
+      - DATABASE_URL=postgres://modulecad:${POSTGRES_PASSWORD}@postgres:5432/modulecad
+      # RustFS — internal endpoint (server-side ops) + browser-facing origin
+      # (presigned uploads/downloads). ${SERVICE_FQDN_RUSTFS} is resolved by
+      # Coolify from the rustfs service below.
+      - RUSTFS_ENDPOINT=http://rustfs:9000
+      - RUSTFS_PUBLIC_ENDPOINT=${SERVICE_FQDN_RUSTFS}
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}
+      - RUSTFS_BUCKET=modulecad
+      # dwg-converter — internal only.
+      - DWG_CONVERTER_URL=http://dwg-converter:8080
+      - DWG_CONVERTER_SECRET=${DWG_CONVERTER_SECRET}
+      # better-auth session secret.
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      # Coolify auto-injects the public FQDN here for OAuth redirect URLs etc.
+      - COOLIFY_FQDN
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_DB=modulecad
+      - POSTGRES_USER=modulecad
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U modulecad']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  rustfs:
+    # RustFS (Apache-2.0) — S3-compatible object store, the CDN/storage origin.
+    # NOTE: RustFS is still Beta; architecture is S3-compatible so we can swap
+    # to MinIO by changing the image + endpoint if needed (see GUIDE.md risks).
+    image: rustfs/rustfs:latest
+    environment:
+      - SERVICE_FQDN_RUSTFS
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}
+    # Bind-mount object data to an explicit host path so it is independently
+    # backup-able (Coolify named-volume lifecycle has known recreation bugs
+    # #5099 / #5589 — don't rely on it for irreplaceable data).
+    volumes:
+      - /srv/rustfs/data:/data
+    # TODO Phase 7: add explicit healthcheck once RustFS exposes /health.
+    restart: unless-stopped
+
+  dwg-converter:
+    # GPL-3.0-or-later microservice. NO SERVICE_FQDN — internal only.
+    build:
+      context: .
+      dockerfile: apps/dwg-converter/Dockerfile
+    environment:
+      - PORT=8080
+      - DWG_CONVERTER_SECRET=${DWG_CONVERTER_SECRET}
+      - RUSTFS_ENDPOINT=http://rustfs:9000
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}
+    depends_on:
+      - rustfs
+    restart: unless-stopped
+
+volumes:
+  pgdata:
