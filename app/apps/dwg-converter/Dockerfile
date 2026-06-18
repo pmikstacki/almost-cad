@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential wget ca-certificates \
       pkg-config \
       libpcre2-dev \
+      python3 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt
 # Use the release tarball (stable, no autogen needed) instead of git HEAD.
