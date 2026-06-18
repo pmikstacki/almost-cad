@@ -1,5 +1,5 @@
 import { betterAuth } from 'better-auth'
-import { createPool } from 'pg'
+import { Pool, type Pool as PgPool } from 'pg'
 
 /**
  * better-auth server instance for moduleCad.
@@ -43,11 +43,14 @@ export const auth = betterAuth({
 /**
  * Lazy-shared pg pool for our own app queries (the drawings/modules tables).
  * better-auth manages its own connection; this one is for moduleCad data.
+ *
+ * Note: `pg` (node-postgres) exports the `Pool` class, NOT a `createPool`
+ * factory function. Use `new Pool(...)`.
  */
-let _pool: ReturnType<typeof createPool> | null = null
-export function db(): ReturnType<typeof createPool> {
+let _pool: PgPool | null = null
+export function db(): PgPool {
   if (!_pool) {
-    _pool = createPool({ connectionString: useRuntimeConfig().databaseUrl })
+    _pool = new Pool({ connectionString: useRuntimeConfig().databaseUrl })
   }
   return _pool
 }
