@@ -254,6 +254,40 @@ once 1.0.0 ships. Until then, `0.x` increments track phases.
 - `pnpm --filter @modulecad/web build` compiles cleanly. Export + export/pdf
   routes emitted. Total 11.4 MB / 2.67 MB gzip.
 
+### Added — Phase 7: Coolify deployment
+
+- Added Traefik labels to the `web` service in `docker-compose.yml`
+  (`coolify.proxy=true`) defining a `modulecad-sse-nobuffer` middleware that
+  zeroes all buffering limits. Required so `/api/jobs/:id/events` (SSE) is
+  not killed by Coolify's default Buffering middleware. Browser uploads
+  bypass `web` entirely (presigned direct-to-RustFS), so body-size limits are
+  moot.
+- `app/DEPLOY.md` — full Coolify deployment guide: prerequisites, DNS, FQDN
+  assignment, secrets table (with generation commands), persistent-storage
+  setup (the `/srv/rustfs/data` bind mount and the `pgdata` named volume),
+  first-deploy DB migration, the buffering/SSE explanation, an
+  operations cheat-sheet, a backups recipe (`pg_dump` + `restic`), and a
+  healthchecks table.
+- `app/.env.example` — production secrets reference for the compose-level
+  `${VAR}` substitutions, with `__GENERATE__` placeholders and `openssl rand`
+  hints.
+
+### Verified (Phase 7)
+
+- `docker compose -f docker-compose.yml config --quiet` — structurally valid
+  with the new labels (only unset-env warnings, which Coolify resolves at
+  deploy).
+- `pnpm build` (whole workspace) succeeds for **10 projects** — the 9
+  upstream packages + `@modulecad/web`.
+
+## Post-Phase-7 status
+
+All eight phases of the umbrella spec are implemented and build-verified.
+The remaining work to reach a production deploy is operational rather than
+code: install LibreDWG in the dwg-converter image (the Dockerfile builds it
+from source — first build is slow), point DNS at the Coolify server, set the
+secrets in the Coolify UI, and run the DB migration. See `app/DEPLOY.md`.
+
 ## [0.0.0] — pre-fork baseline
 
 Upstream `mlightcad/cad-viewer` @ HEAD of `main` (2026-06-18), MIT-licensed.

@@ -37,6 +37,21 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       # Coolify auto-injects the public FQDN here for OAuth redirect URLs etc.
       - COOLIFY_FQDN
+    labels:
+      # ── Traefik buffering workaround for SSE ───────────────────────────
+      # Coolify's Traefik may apply a Buffering middleware that caps request
+      # body size and breaks long-lived streaming connections. The SSE job
+      # progress route (/api/jobs/:id/events) MUST stream unbuffered.
+      # Coolify honors labels tagged coolify.proxy=true and won't overwrite
+      # them. We define a no-buffering middleware and route SSE paths to it.
+      - coolify.proxy=true
+      - traefik.enable=true
+      - traefik.http.middlewares.modulecad-sse-nobuffer.buffering.maxRequestBodyBytes=0
+      - traefik.http.middlewares.modulecad-sse-nobuffer.buffering.maxResponseBodyBytes=0
+      - traefik.http.middlewares.modulecad-sse-nobuffer.buffering.memRequestBodyBytes=0
+      - traefik.http.middlewares.modulecad-sse-nobuffer.buffering.memResponseBodyBytes=0
+      - traefik.http.middlewares.modulecad-sse-nobuffer.buffering.retryExpression=
+      - traefik.http.routers.modulecad-sse.middlewares=modulecad-sse-nobuffer
     depends_on:
       postgres:
         condition: service_healthy
