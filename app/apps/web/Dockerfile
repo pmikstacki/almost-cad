@@ -30,9 +30,21 @@ RUN pnpm install --no-frozen-lockfile --filter @modulecad/web --filter @moduleca
 # CRITICAL: the vendored @mlightcad/* packages (cad-viewer, cad-simple-viewer,
 # three-renderer, cad-pdf-plugin, etc.) ship with `exports`/`main` pointing at
 # ./dist/*.js, but `dist/` is gitignored — so it does NOT exist in the checkout.
-# We must build those packages before the Nuxt build can resolve them. The
-# upstream packages have build scripts that emit dist/ via vite.
-RUN pnpm -r --filter "./packages/**" build
+# We must build those packages so the Nuxt build can resolve them.
+#
+# The upstream build script is `tsc && vite build`. The `tsc` step fails in the
+# container (peer deps like @mlightcad/data-model and three are hoisted by pnpm
+# but not visible to tsc's strict module resolution from each package's dir).
+# We only need the vite output (dist/*.js), not the type declarations — so we
+# run `vite build` directly per package, which emits dist/ without type-checking.
+# Order matters: three-renderer first, then simple-viewer (depends on nothing
+# internal but is depended-on), then the plugins + the full viewer last.
+RUN cd packages/three-renderer && pnpm exec vite build \
+ && cd ../cad-simple-viewer && pnpm exec vite build \
+ && cd ../cad-svg-plugin && pnpm exec vite build \
+ && cd ../cad-pdf-plugin && pnpm exec vite build \
+ && cd ../cad-html-plugin && pnpm exec vite build \
+ && cd ../cad-viewer && pnpm exec vite build
 
 # Build just the web app. Output lands in apps/web/.output
 WORKDIR /app/apps/web
