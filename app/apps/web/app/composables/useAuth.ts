@@ -6,12 +6,17 @@ import { createAuthClient } from 'better-auth/client'
  * Usage in pages/components:
  *   const { session, user, signIn, signUp, signOut, pending } = useAuth()
  *
- * SSR-safe: the client handles cookie-based sessions transparently. We
- * initialise the session state on mount via $fetch('/api/auth/get_session').
+ * SSR-safe: the client is created lazily (only in the browser) because
+ * createAuthClient touches window.location. During SSR we skip it.
  */
-const authClient = createAuthClient({
-  baseURL: window.location.origin
-})
+let authClient: ReturnType<typeof createAuthClient> | null = null
+function getClient() {
+  if (import.meta.server) return null
+  if (!authClient) {
+    authClient = createAuthClient({ baseURL: window.location.origin })
+  }
+  return authClient
+}
 
 export function useAuth() {
   const session = useState<ReturnType<typeof useAuth>['session']['value'] | null>(
@@ -21,9 +26,11 @@ export function useAuth() {
   const pending = useState<boolean>('auth:pending', () => true)
 
   async function fetchSession() {
+    const client = getClient()
+    if (!client) return // SSR — skip; the browser call hydrates on mount
     pending.value = true
     try {
-      const res = await authClient.getSession()
+      const res = await client.getSession()
       session.value = res?.data ?? null
     } catch {
       session.value = null
@@ -33,19 +40,25 @@ export function useAuth() {
   }
 
   async function signIn(email: string, password: string) {
-    const res = await authClient.signIn.email({ email, password })
+    const client = getClient()
+    if (!client) return { error: { message: 'Not available during SSR' } } as any
+    const res = await client.signIn.email({ email, password })
     if (!res.error) await fetchSession()
     return res
   }
 
   async function signUp(email: string, password: string, name?: string) {
-    const res = await authClient.signUp.email({ email, password, name })
+    const client = getClient()
+    if (!client) return { error: { message: 'Not available during SSR' } } as any
+    const res = await client.signUp.email({ email, password, name })
     if (!res.error) await fetchSession()
     return res
   }
 
   async function signOut() {
-    await authClient.signOut()
+    const client = getClient()
+    if (!client) return
+    await client.signOut()
     session.value = null
   }
 
