@@ -17,7 +17,7 @@ COPY packages/modules/package.json ./packages/modules/
 COPY packages ./packages
 RUN pnpm install --no-frozen-lockfile
 
-# ── Stage 2: build the Nuxt app only ──────────────────────────────────
+# ── Stage 2: build vendored packages, then the Nuxt app ───────────────
 FROM node:24-alpine AS builder
 WORKDIR /app
 RUN corepack enable
@@ -26,6 +26,14 @@ COPY . .
 # Re-run install in the builder so the web app's local node_modules/.bin is
 # fully populated (the deps stage's hoist may not symlink nuxt locally).
 RUN pnpm install --no-frozen-lockfile --filter @modulecad/web --filter @modulecad/modules
+
+# CRITICAL: the vendored @mlightcad/* packages (cad-viewer, cad-simple-viewer,
+# three-renderer, cad-pdf-plugin, etc.) ship with `exports`/`main` pointing at
+# ./dist/*.js, but `dist/` is gitignored — so it does NOT exist in the checkout.
+# We must build those packages before the Nuxt build can resolve them. The
+# upstream packages have build scripts that emit dist/ via vite.
+RUN pnpm -r --filter "./packages/**" build
+
 # Build just the web app. Output lands in apps/web/.output
 WORKDIR /app/apps/web
 RUN pnpm exec nuxt build
