@@ -229,6 +229,31 @@ once 1.0.0 ships. Until then, `0.x` increments track phases.
 - `pnpm --filter @modulecad/web build` compiles cleanly. Preview page, reorder,
   and patch routes all emitted. Total 11.4 MB / 2.67 MB gzip.
 
+### Added — Phase 6: Export (PDF + DXF + DWG write-back)
+
+- `app/composables/useExport.ts` — serializes the live AcDbDatabase (model
+  space + all module layouts) to DXF via `db.dxfOut()`, then coordinates with
+  the server for DXF upload + DWG conversion + PDF render.
+- `POST /api/drawings/:id/export` — accepts the serialized DXF, uploads it to
+  RustFS at `exports/<drawingId>/<hash>.dxf` (content-addressed, immutable
+  `Cache-Control`), dispatches `dxf2dwg` to the dwg-converter, and returns
+  presigned DXF + DWG download URLs.
+- `POST /api/drawings/:id/export/pdf` — accepts a base64 PDF rendered
+  client-side (cad-pdf-plugin), stores it content-addressed in RustFS, returns
+  a presigned download URL.
+- Preview page now has an "Export (PDF/DXF/DWG)" button that runs the full
+  flow and surfaces three download links. PDF rendering is best-effort (the
+  cad-pdf-plugin API is loaded defensively); DXF/DWG are the round-trippable
+  deliverables that open in AutoCAD.
+- `apps/web` now depends on the vendored `@mlightcad/cad-pdf-plugin` workspace
+  package.
+
+### Verified (Phase 6)
+
+- `pnpm install` resolves cad-pdf-plugin as a workspace dep.
+- `pnpm --filter @modulecad/web build` compiles cleanly. Export + export/pdf
+  routes emitted. Total 11.4 MB / 2.67 MB gzip.
+
 ## [0.0.0] — pre-fork baseline
 
 Upstream `mlightcad/cad-viewer` @ HEAD of `main` (2026-06-18), MIT-licensed.

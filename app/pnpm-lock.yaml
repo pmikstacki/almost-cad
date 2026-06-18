@@ -121,6 +121,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.700.0
         version: 3.1071.0
+      '@mlightcad/cad-pdf-plugin':
+        specifier: workspace:*
+        version: link:../../packages/cad-pdf-plugin
       '@mlightcad/cad-simple-viewer':
         specifier: workspace:*
         version: link:../../packages/cad-simple-viewer
