@@ -61,7 +61,9 @@
       </ul>
 
       <div class="sidebar-footer" v-if="modules.length">
-        <p class="hint">Plotting lands in Phase 4.</p>
+        <NuxtLink :to="`/drawings/${drawingId}/preview`" class="preview-link">
+          <button class="secondary" style="width:100%">Preview plots →</button>
+        </NuxtLink>
       </div>
     </aside>
 

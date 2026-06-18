@@ -206,6 +206,29 @@ once 1.0.0 ships. Until then, `0.x` increments track phases.
   package is consumed as TS source via the workspace symlink and bundles into
   the client without errors.
 
+### Added — Phase 5: Preview + reorder + right-panel controls
+
+- `POST /api/drawings/:id/modules/reorder` — bulk reassign `sort_order` from
+  an array of ids, in a single transaction.
+- `PATCH /api/drawings/:id/modules/:moduleId` — merge-patch of the JSONB
+  override columns (`legend_filter_overrides`, `logo_overrides`,
+  `title_field_values`) plus `name` / `viewport_zoom_padding`. Dynamic UPDATE
+  builder so only supplied fields are written.
+- `app/pages/drawings/[id]/preview.vue` — the plot preview page:
+  - **Thumbnail grid** of all plotted layouts (drag-and-drop reorderable;
+    `draggable` HTML5 DnD with dragover highlighting).
+  - **Save order** persists the new order via the reorder endpoint.
+  - **Right panel** with per-module controls: title-field text editors, a
+    legend-filter checkbox list (include/exclude block names → updates
+    `legendFilterOverrides.excludePatterns`), and a **Re-plot** action that
+    persists overrides then re-runs `generateModuleLayout` against the live DB.
+- Editor sidebar footer now links to the preview page.
+
+### Verified (Phase 5)
+
+- `pnpm --filter @modulecad/web build` compiles cleanly. Preview page, reorder,
+  and patch routes all emitted. Total 11.4 MB / 2.67 MB gzip.
+
 ## [0.0.0] — pre-fork baseline
 
 Upstream `mlightcad/cad-viewer` @ HEAD of `main` (2026-06-18), MIT-licensed.
