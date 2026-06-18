@@ -1,0 +1,19 @@
+# moduleCad root .gitignore (the app/ subdir has its own for node_modules/dist)
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.sublime-workspace
+
+# Agent temp data — must never be committed (per ~/AGENTS.md)
+.cache/
+tmp/
+
+# Local env / secrets — never commit
+.env
+.env.local
+.env.*.local
+*.secret
