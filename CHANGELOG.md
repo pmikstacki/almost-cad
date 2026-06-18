@@ -131,6 +131,38 @@ once 1.0.0 ships. Until then, `0.x` increments track phases.
 - `docker compose -f docker-compose.yml config --quiet` — structurally valid
   (only unset-env warnings, expected since Coolify injects secrets at deploy).
 
+### Added — Phase 3: Modules drawing + storage
+
+- `app/pages/drawings/[id].vue` — the drawing editor page. Hosts the vendored
+  `MlCADViewer` (Write mode, dark theme), with a left sidebar listing the
+  drawing's modules. "+ New module" enters a boundary-drawing mode that
+  captures canvas clicks as model-space WCS points (via `AcApDocManager.curView`
+  screen→WCS conversion) and closes the polygon on Enter or click-near-first.
+  Boundary capture is silent in Phase 3 (transient overlay lands in Phase 4).
+- `GET /api/drawings/:id` — single drawing detail for the editor page.
+- `GET /api/drawings/:id/modules` — list a drawing's modules in sort order.
+- `POST /api/drawings/:id/modules` — create a module instance. Defaults to the
+  user's "Default A1 Landscape" template (seeded lazily). Computes sort_order
+  as max(existing)+1. Validates boundary is a polygon (>=3 points).
+- `DELETE /api/drawings/:id/modules/:moduleId` — remove a module instance.
+- `server/utils/templates.ts` — `ensureDefaultTemplate(userId)` seeds a
+  per-user default template matching the `@modulecad/modules` ModuleTemplate
+  interface (A1 landscape, 0.72 viewport ratio, 3 title fields, 1 logo slot,
+  3 legend columns [thumbnail|name|count]).
+- Dashboard drawing cards are now clickable and navigate to the editor.
+- `apps/web/package.json` now depends on the vendored
+  `@mlightcad/cad-viewer` and `@mlightcad/cad-simple-viewer` workspace
+  packages so Nuxt can resolve them at build time.
+
+### Verified (Phase 3)
+
+- `pnpm install` resolves the new workspace deps cleanly.
+- `pnpm --filter @modulecad/web build` compiles with the vendored viewer
+  bundled into the client (11.4 MB / 2.66 MB gzip — expected, since the
+  editor page pulls in three-renderer + cad-simple-viewer). All new API
+  routes emitted: `drawings/_id/modules/_moduleId_.delete`,
+  `drawings/_id/index.get`, etc.
+
 ## [0.0.0] — pre-fork baseline
 
 Upstream `mlightcad/cad-viewer` @ HEAD of `main` (2026-06-18), MIT-licensed.

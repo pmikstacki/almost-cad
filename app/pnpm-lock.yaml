@@ -121,6 +121,15 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.700.0
         version: 3.1071.0
+      '@mlightcad/cad-simple-viewer':
+        specifier: workspace:*
+        version: link:../../packages/cad-simple-viewer
+      '@mlightcad/cad-viewer':
+        specifier: workspace:*
+        version: link:../../packages/cad-viewer
+      '@modulecad/modules':
+        specifier: workspace:*
+        version: link:../../packages/modules
       better-auth:
         specifier: ^1.2.0
         version: 1.6.19(pg@8.21.0)(vue@3.5.31(typescript@5.9.3))

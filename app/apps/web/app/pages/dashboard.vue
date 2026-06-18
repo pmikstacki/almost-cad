@@ -10,7 +10,12 @@
       No drawings yet. Upload a DWG or DXF to get started.
     </p>
     <ul v-else class="drawing-grid">
-      <li v-for="d in drawings" :key="d.id" class="drawing-card">
+      <li
+        v-for="d in drawings"
+        :key="d.id"
+        class="drawing-card"
+        @click="open(d.id)"
+      >
         <div class="thumb">[ {{ d.format.toUpperCase() }} ]</div>
         <div class="meta">
           <div class="name">{{ d.originalFilename }}</div>
@@ -35,6 +40,11 @@ interface Drawing {
 
 const drawings = ref<Drawing[]>([])
 const pending = ref(true)
+const router = useRouter()
+
+function open(id: string) {
+  router.push(`/drawings/${id}`)
+}
 
 async function refresh() {
   pending.value = true
@@ -65,8 +75,10 @@ onMounted(refresh)
 }
 .drawing-card {
   background: var(--panel); border: 1px solid var(--border);
-  border-radius: 8px; overflow: hidden;
+  border-radius: 8px; overflow: hidden; cursor: pointer;
+  transition: border-color 0.15s;
 }
+.drawing-card:hover { border-color: var(--accent); }
 .thumb {
   height: 140px; display: flex; align-items: center; justify-content: center;
   background: #0b0d12; color: var(--muted); font-family: ui-monospace, monospace;
