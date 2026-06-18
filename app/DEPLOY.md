@@ -16,7 +16,7 @@ Postgres, dwg-converter) on a single Coolify server.
 ## Step 1 — Create the application in Coolify
 
 1. **New Resource → Application → Docker Compose build pack**, pointed at
-   this repo's `app/docker-compose.yml`.
+   this repo's `docker-compose.yml` (at the repo root).
 2. Coolify auto-detects the compose file and offers per-service build toggles.
    Leave **Build from repo** on for `web` and `dwg-converter`; `postgres` and
    `rustfs` use prebuilt images.

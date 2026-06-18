@@ -1,0 +1,82 @@
+# moduleCad — Coolify Docker Compose deployment (repo-root).
+#
+# This file lives at the REPO ROOT (not inside app/) so Coolify checks out the
+# whole repo and the build contexts resolve. Build contexts point at ./app
+# (the fork); Dockerfiles are at ./app/apps/<service>/Dockerfile.
+#
+# Build pack: Docker Compose. Proxy: Coolify-managed (Caddy on this server).
+# SSL: automatic for the public FQDNs.
+#
+# Service visibility:
+#   web, rustfs   -> public (SERVICE_FQDN_*)
+#   postgres,
+#   dwg-converter -> internal only (no FQDN; reachable by service name)
+#
+# See GUIDE.md, UPSTREAM.md, app/DEPLOY.md.
+
+services:
+  web:
+    build:
+      context: ./app
+      dockerfile: apps/web/Dockerfile
+    environment:
+      - SERVICE_FQDN_WEB
+      - DATABASE_URL=postgres://modulecad:${POSTGRES_PASSWORD}@postgres:5432/modulecad
+      - RUSTFS_ENDPOINT=http://rustfs:9000
+      - RUSTFS_PUBLIC_ENDPOINT=${SERVICE_FQDN_RUSTFS}
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}
+      - RUSTFS_BUCKET=modulecad
+      - DWG_CONVERTER_URL=http://dwg-converter:8080
+      - DWG_CONVERTER_SECRET=${DWG_CONVERTER_SECRET}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - COOLIFY_FQDN
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_DB=modulecad
+      - POSTGRES_USER=modulecad
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U modulecad']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    environment:
+      - SERVICE_FQDN_RUSTFS
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}
+    volumes:
+      - rustfsdata:/data
+    restart: unless-stopped
+
+  dwg-converter:
+    build:
+      context: ./app
+      dockerfile: apps/dwg-converter/Dockerfile
+    environment:
+      - PORT=8080
+      - DWG_CONVERTER_SECRET=${DWG_CONVERTER_SECRET}
+      - RUSTFS_ENDPOINT=http://rustfs:9000
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}
+    depends_on:
+      - rustfs
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  rustfsdata:
