@@ -146,3 +146,19 @@ export interface ModuleInstance {
   /** Sort order in the plot grid. */
   sortOrder: number
 }
+
+// Engine + helpers (added in Phase 4).
+export {
+  generateModuleLayout,
+  generateAllModuleLayouts,
+  type GeneratedLayout
+} from './engine'
+export { countBlocksInModule, type BlockCount } from './legend'
+export {
+  polygonBBox,
+  polygonCentroid,
+  pointInPolygon,
+  matchGlob,
+  filterBlockNames,
+  type BBox
+} from './geometry'

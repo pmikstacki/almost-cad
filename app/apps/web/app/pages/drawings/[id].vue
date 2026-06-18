@@ -17,11 +17,24 @@
         <button :disabled="!viewerReady || drawingMode" @click="startNewModule">
           + New module
         </button>
+        <button
+          v-if="modules.length"
+          :disabled="!viewerReady || plotting"
+          class="secondary"
+          @click="plotAll"
+        >
+          {{ plotting ? 'Plotting…' : `Plot all (${modules.length})` }}
+        </button>
         <button v-if="drawingMode" class="secondary" @click="cancelNewModule">Cancel</button>
         <p v-if="drawingMode" class="hint">
           Click points in the drawing to trace the module boundary.
           Press <kbd>Enter</kbd> or click the first point to close.
         </p>
+        <p v-if="plotResult" class="hint ok">
+          Plotted {{ plotResult.length }} module{{ plotResult.length === 1 ? '' : 's' }}.
+          Open a layout in AutoCAD to inspect.
+        </p>
+        <p v-if="plotError" class="hint err">{{ plotError }}</p>
       </div>
 
       <ul class="module-list">
@@ -36,6 +49,12 @@
           <span class="m-name">{{ m.name }}</span>
           <span class="m-meta">{{ m.boundary.length }} pts</span>
           <div class="m-actions" v-if="m.id === selectedId">
+            <button
+              class="link"
+              :disabled="plotting"
+              @click.stop="plotOne(m)"
+            >Plot</button>
+            <button class="link" @click.stop="showModuleLayout(m)">View</button>
             <button class="link danger" @click.stop="remove(m.id)">Delete</button>
           </div>
         </li>
@@ -72,6 +91,7 @@
 import { MlCADViewer } from '@mlightcad/cad-viewer'
 import { AcEdOpenMode } from '@mlightcad/cad-simple-viewer'
 import { AcApDocManager } from '@mlightcad/cad-simple-viewer'
+import type { ModuleTemplate } from '@modulecad/modules'
 
 interface DrawingDetail {
   id: string
@@ -84,6 +104,7 @@ interface ModuleRow {
   name: string
   boundary: { x: number; y: number }[]
   sortOrder: number
+  templateId: string
 }
 
 const route = useRoute()
@@ -100,6 +121,12 @@ const selectedId = ref<string | null>(null)
 const drawingMode = ref(false)
 // Polyline points captured in model-space WCS during the current draw session.
 const currentBoundary = ref<{ x: number; y: number }[]>([])
+
+// Templates + plotting state (Phase 4).
+const templatesById = ref<Map<string, ModuleTemplate>>(new Map())
+const plotting = ref(false)
+const plotResult = ref<{ length: number } | null>(null)
+const plotError = ref('')
 
 // ──────────────────────────────────────────────────────────────────────
 // Load drawing metadata + DXF URL
@@ -125,15 +152,107 @@ async function loadDrawing() {
 
 async function loadModules() {
   try {
-    modules.value = await $fetch<ModuleRow[]>(`/api/drawings/${drawingId}/modules`)
+    const rows = await $fetch<ModuleRow[]>(`/api/drawings/${drawingId}/modules`)
+    modules.value = rows
   } catch {
     modules.value = []
   }
 }
 
+async function loadTemplates() {
+  try {
+    const tpls = await $fetch<ModuleTemplate[]>(`/api/templates`)
+    templatesById.value = new Map(tpls.map((t) => [t.id, t]))
+  } catch {
+    // Non-fatal — plotting will surface a clearer error.
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Plotting (Phase 4) — runs the @modulecad/modules engine against the live
+// AcDbDatabase held by the viewer.
+// ──────────────────────────────────────────────────────────────────────
+async function plotOne(m: ModuleRow) {
+  plotError.value = ''
+  plotResult.value = null
+  plotting.value = true
+  try {
+    const { plotModule } = useModules()
+    const tpl = templatesById.value.get(m.templateId)
+    if (!tpl) throw new Error('No template associated with this module')
+    const res = plotModule(toInstance(m), tpl)
+    plotResult.value = { length: 1 }
+    await refreshViewer()
+    await showModuleLayout(m)
+    return res
+  } catch (e: any) {
+    plotError.value = e?.message ?? 'Plot failed'
+  } finally {
+    plotting.value = false
+  }
+}
+
+async function plotAll() {
+  plotError.value = ''
+  plotResult.value = null
+  plotting.value = true
+  try {
+    const { plotAll: doPlot } = useModules()
+    const instances = modules.value.map(toInstance)
+    const res = doPlot(instances, templatesById.value)
+    plotResult.value = { length: res.length }
+    await refreshViewer()
+    // Show the first plotted layout.
+    if (modules.value[0]) await showModuleLayout(modules.value[0])
+  } catch (e: any) {
+    plotError.value = e?.message ?? 'Plot failed'
+  } finally {
+    plotting.value = false
+  }
+}
+
+/** Convert a DB ModuleRow into the engine's ModuleInstance shape. */
+function toInstance(m: ModuleRow) {
+  const tpl = templatesById.value.get(m.templateId)
+  return {
+    id: m.id,
+    drawingId,
+    templateId: m.templateId,
+    name: m.name,
+    boundary: m.boundary,
+    viewportZoomPadding: 0,
+    legendFilterOverrides: {},
+    logoOverrides: {},
+    titleFieldValues: { title: m.name },
+    sortOrder: m.sortOrder,
+    ...(tpl ? {} : {})
+  }
+}
+
+async function showModuleLayout(m: ModuleRow) {
+  try {
+    const { showLayout } = useModules()
+    await showLayout(m.name)
+  } catch {
+    // Layout switching may differ across viewer versions; non-fatal.
+  }
+}
+
+/** Force the viewer to re-render after the database has new layouts. */
+async function refreshViewer() {
+  try {
+    const doc = AcApDocManager.instance.curDocument
+    if (doc?.database && typeof (doc.database as any).regen === 'function') {
+      await (doc.database as any).regen()
+    }
+  } catch {
+    /* regen best-effort */
+  }
+}
+
 onMounted(async () => {
   await loadDrawing()
-  await loadModules()
+  await Promise.all([loadModules(), loadTemplates()])
 })
 
 // ──────────────────────────────────────────────────────────────────────
@@ -296,6 +415,8 @@ async function remove(id: string) {
 .status[data-status="error"] { color: #ef4444; }
 .sidebar-actions { padding: 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
 .hint { font-size: 11px; color: var(--muted); margin: 4px 0 0; line-height: 1.4; }
+.hint.ok { color: #22c55e; }
+.hint.err { color: #ef4444; }
 kbd {
   background: #0b0d12; border: 1px solid var(--border); border-radius: 3px;
   padding: 1px 5px; font-size: 10px; font-family: ui-monospace, monospace;

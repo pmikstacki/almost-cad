@@ -163,6 +163,49 @@ once 1.0.0 ships. Until then, `0.x` increments track phases.
   routes emitted: `drawings/_id/modules/_moduleId_.delete`,
   `drawings/_id/index.get`, etc.
 
+### Added — Phase 4: Plot generation (core IP)
+
+- `packages/modules/src/geometry.ts` — pure geometry helpers: `polygonBBox`,
+  `polygonCentroid` (area-weighted), `pointInPolygon` (ray-casting),
+  `matchGlob` + `filterBlockNames` for legend include/exclude filters.
+- `packages/modules/src/legend.ts` — `countBlocksInModule(db, boundary,
+  filters)` iterates model space, finds `AcDbBlockReference` insertions whose
+  `position` falls inside the boundary, groups by `AcDbBlockTableRecord.name`,
+  applies glob filters, sorts by descending count.
+- `packages/modules/src/engine.ts` — the core `generateModuleLayout(db,
+  module, template)`:
+  1. Idempotent: deletes any prior layout of the same name.
+  2. Creates a paper-space `AcDbLayout` + its block record via
+     `acdbHostApplicationServices().layoutManager.createLayout(name, db)`.
+  3. Sets plot settings: paper size (ISO/ANSI mm table), margins, plotType
+     kLayout, plotCentered, millimetres.
+  4. Builds the title-block border (outer + inner rectangles of `AcDbLine`).
+  5. Creates the `AcDbViewport` on the left portion of the sheet: `centerPoint`
+     on paper, `width/height` sized to the viewport ratio, `viewCenter` on the
+     module centroid, `viewHeight` = boundary bbox + padding (the zoom).
+  6. Adds title-block text fields (`AcDbText`).
+  7. For each logo slot with an image key, creates `AcDbRasterImageDef` +
+     `AcDbRasterImage` (real geometry). Empty slots get a reserved outline.
+  8. Builds the legend `AcDbTable` with one row per counted block; the
+     thumbnail column references the block by name (native block insert). The
+     block IS the thumbnail, so the legend is always accurate.
+  - Also `generateAllModuleLayouts(db, modules, templatesById)` for bulk plotting.
+- `app/composables/useModules.ts` — bridges the engine to the live
+  `AcDbDatabase` held by the vendored viewer (`AcApDocManager.instance
+  .curDocument.database`). Exposes `plotModule`, `plotAll`, `showLayout`.
+- `GET /api/templates` — lists the user's module templates in the
+  `@modulecad/modules` `ModuleTemplate` shape.
+- Editor page now: loads templates, exposes per-module Plot + View actions and
+  a "Plot all (N)" bulk button, switches the viewer to the generated layout
+  after plotting, and calls `database.regen()` to refresh rendering.
+
+### Verified (Phase 4)
+
+- `pnpm --filter @modulecad/web build` compiles cleanly with the modules
+  engine + the new `/api/templates` route emitted. The `@modulecad/modules`
+  package is consumed as TS source via the workspace symlink and bundles into
+  the client without errors.
+
 ## [0.0.0] — pre-fork baseline
 
 Upstream `mlightcad/cad-viewer` @ HEAD of `main` (2026-06-18), MIT-licensed.
