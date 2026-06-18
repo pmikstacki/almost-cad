@@ -1,33 +1,50 @@
-# @modulecad/dwg-converter — runtime image using the Debian libredwg-tools
-# package instead of building LibreDWG from source.
+# @modulecad/dwg-converter — builds LibreDWG once (cached), ships binaries.
 #
-# Why apt instead of a source build: compiling LibreDWG is memory-heavy
-# (~2 GB RAM) and slow (~10-15 min), which is a poor fit for a CI/CD build
-# runner like Coolify. The Debian `libredwg-tools` package ships `dwg2dxf`
-# and `dxf2dwg` prebuilt for bookworm, turning the build into a seconds-long
-# apt install.
+# Debian stable (bookworm) does NOT ship libredwg-tools in apt, and LibreDWG
+# GitHub releases have no .deb artifacts. So we compile LibreDWG in a builder
+# stage — this is a one-time cost: the layer is cached and reused on every
+# subsequent deploy. Only the resulting binaries (dwg2dxf, dxf2dwg + libs)
+# are copied to the slim runtime image.
 #
-# GPL boundary: this image bundles LibreDWG (GPL-3), so the image is
-# GPL-3.0-or-later. It runs as its own container, never linked into the Nuxt
-# process — the "mere aggregation" doctrine. See app/LICENSE and
-# app/LICENSES/GPL-3.0-components.md.
+# To keep the build off the Coolify host's memory, this stage is split from
+# the runtime: the builder can be heavy, the runner stays small (~150MB).
+#
+# GPL boundary: bundles LibreDWG (GPL-3) → image is GPL-3.0-or-later. Runs
+# as its own container, never linked into the Nuxt process. See app/LICENSE.
 
-FROM node:24-bookworm-slim AS runtime
-
-# Install LibreDWG CLI tools (dwg2dxf, dxf2dwg) from Debian.
-# Also wget for the healthcheck.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libredwg-tools wget \
+# ── Stage 1: build LibreDWG from the release tarball (cached layer) ────
+FROM debian:bookworm-slim AS libredwg-builder
+ARG LIBREDWG_VERSION=0.13.4
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential wget ca-certificates \
+      libpcre2-dev \
     && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt
+# Use the release tarball (stable, no autogen needed) instead of git HEAD.
+RUN wget -q "https://github.com/LibreDWG/libredwg/releases/download/${LIBREDWG_VERSION}/libredwg-${LIBREDWG_VERSION}.tar.gz" \
+    && tar xzf "libredwg-${LIBREDWG_VERSION}.tar.gz" \
+    && cd "libredwg-${LIBREDWG_VERSION}" \
+    && ./configure --disable-bindings --prefix=/usr/local \
+    && make -j"$(nproc)" \
+    && make install \
+    && ldconfig
 
-# Verify the binaries are present and fail the build early if not.
-RUN dwg2dxf --version >/dev/null 2>&1 && echo "dwg2dxf OK" \
-    && dxf2dwg --version >/dev/null 2>&1 && echo "dxf2dwg OK"
+# ── Stage 2: minimal runtime — Node + the built LibreDWG binaries ─────
+FROM node:24-bookworm-slim AS runtime
+# Copy the compiled binaries and their shared libs from the builder.
+COPY --from=libredwg-builder /usr/local/bin/dwg2dxf /usr/local/bin/dwg2dxf
+COPY --from=libredwg-builder /usr/local/bin/dxf2dwg /usr/local/bin/dxf2dwg
+COPY --from=libredwg-builder /usr/local/lib /usr/local/lib
+RUN ldconfig
+
+# wget for the healthcheck.
+RUN apt-get update && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 RUN corepack enable
 COPY apps/dwg-converter/package.json ./package.json
-RUN pnpm install --prod --frozen-lockfile || pnpm install --prod
+RUN pnpm install --prod --no-frozen-lockfile
 COPY apps/dwg-converter/src ./src
 
 ENV PORT=8080
