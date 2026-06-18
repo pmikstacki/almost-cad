@@ -1,33 +1,28 @@
-# Multi-stage build for @modulecad/dwg-converter.
+# @modulecad/dwg-converter — runtime image using the Debian libredwg-tools
+# package instead of building LibreDWG from source.
 #
-# Two things make this image GPL-isolated from the rest of the stack:
-#   1. It bundles native LibreDWG (dwg2dxf / dxf2dwg) — GPL-3.
-#   2. It runs as its own container, never linked into the Nuxt process.
-# The image is therefore GPL-3.0-or-later; see app/LICENSE.
+# Why apt instead of a source build: compiling LibreDWG is memory-heavy
+# (~2 GB RAM) and slow (~10-15 min), which is a poor fit for a CI/CD build
+# runner like Coolify. The Debian `libredwg-tools` package ships `dwg2dxf`
+# and `dxf2dwg` prebuilt for bookworm, turning the build into a seconds-long
+# apt install.
+#
+# GPL boundary: this image bundles LibreDWG (GPL-3), so the image is
+# GPL-3.0-or-later. It runs as its own container, never linked into the Nuxt
+# process — the "mere aggregation" doctrine. See app/LICENSE and
+# app/LICENSES/GPL-3.0-components.md.
 
-# Stage 1: build LibreDWG from source on a Debian base (Alpine's musl build
-# is fragile; Debian's glibc build is the well-trodden path).
-FROM debian:bookworm-slim AS libredwg-builder
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential autoconf automake libtool git texinfo \
-      swig pkg-config libpcre2-dev && \
-    rm -rf /var/lib/apt/lists/*
-WORKDIR /opt
-RUN git clone --depth 1 https://gitlab.com/LibreDWG/libredwg.git && \
-    cd libredwg && \
-    sh autogen.sh && \
-    ./configure --disable-bindings --prefix=/usr/local && \
-    make -j"$(nproc)" && \
-    make install && \
-    ldconfig
-
-# Stage 2: runtime — Node + the built LibreDWG binaries.
 FROM node:24-bookworm-slim AS runtime
-# Copy LibreDWG binaries (dwg2dxf, dxf2dwg) and shared libs from the builder.
-COPY --from=libredwg-builder /usr/local/bin/dwg2dxf /usr/local/bin/dwg2dxf
-COPY --from=libredwg-builder /usr/local/bin/dxf2dwg /usr/local/bin/dxf2dwg
-COPY --from=libredwg-builder /usr/local/lib /usr/local/lib
-RUN ldconfig
+
+# Install LibreDWG CLI tools (dwg2dxf, dxf2dwg) from Debian.
+# Also wget for the healthcheck.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libredwg-tools wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify the binaries are present and fail the build early if not.
+RUN dwg2dxf --version >/dev/null 2>&1 && echo "dwg2dxf OK" \
+    && dxf2dwg --version >/dev/null 2>&1 && echo "dxf2dwg OK"
 
 WORKDIR /app
 RUN corepack enable
@@ -37,6 +32,6 @@ COPY apps/dwg-converter/src ./src
 
 ENV PORT=8080
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD wget -qO- http://localhost:8080/health || exit 1
 CMD ["node", "src/server.js"]
