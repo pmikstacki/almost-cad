@@ -1,0 +1,18 @@
+# Nuxt
+.nuxt
+.output
+.data
+.nitro
+.cache
+dist
+
+# Local env — never commit (also covered by root .gitignore)
+.env
+.env.local
+
+# Typecheck artifacts
+*.tsbuildinfo
+
+# Logs
+logs
+*.log
