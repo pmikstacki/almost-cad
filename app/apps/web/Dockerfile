@@ -44,9 +44,19 @@ WORKDIR /app
 ENV NODE_ENV=production
 # Nuxt outputs a self-contained Nitro server bundle.
 COPY --from=builder /app/apps/web/.output ./.output
-# wget for the healthcheck (busybox wget is present on alpine; ensure it).
-RUN apk add --no-cache wget
+# The migration runner runs as a separate node process before the server
+# starts, so it can't rely on the Nitro bundle's internal deps. Copy the
+# builder's full node_modules so 'pg' (and its transitive deps) resolve.
+# This is a one-time copy; the runner stays small otherwise.
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/web/server/scripts/migrate.ts /app/migrate.ts
+COPY --from=builder /app/apps/web/database/migrations /app/migrations
+COPY apps/web/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN apk add --no-cache wget bash
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
   CMD wget -qO- http://localhost:3000/api/health || exit 1
-CMD ["node", ".output/server/index.mjs"]
+# Entrypoint runs idempotent migrations (NODE_PATH=./node_modules so the
+# standalone migrate.ts can resolve pg), then execs the Nitro server.
+ENV NODE_PATH=/app/node_modules
+CMD ["/app/docker-entrypoint.sh"]
