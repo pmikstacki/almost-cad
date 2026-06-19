@@ -13,13 +13,13 @@ import type { H3Event } from 'h3'
  * registration by non-privileged users) — see package.json.
  */
 export const auth = betterAuth({
-  database: {
-    // Kysely-style pg pool config. better-auth manages its own schema via
-    // `betterAuth` tables (user, session, account, verification); we run a
-    // drift-style SQL migration at deploy time.
-    type: 'postgres',
-    url: useRuntimeConfig().databaseUrl
-  },
+  // better-auth expects a live `pg.Pool` instance as `database` (the adapter
+  // detects it via its `connect` method and wraps it in a Kysely
+  // PostgresDialect). Passing `{ type, url }` does NOT work — none of the
+  // adapter's dialect-selection branches recognize that shape, so it returns
+  // null and throws "Failed to initialize database adapter". This was the
+  // root cause of every auth 500 (get-session / sign-in / sign-up).
+  database: new Pool({ connectionString: useRuntimeConfig().databaseUrl }),
   secret: useRuntimeConfig().betterAuthSecret,
   emailAndPassword: {
     enabled: true,

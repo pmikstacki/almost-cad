@@ -11,7 +11,7 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "db:migrate": "node --experimental-strip-types server/scripts/migrate.ts",
+    "db:migrate": "MIGRATIONS_DIR=database/migrations node --experimental-strip-types server/scripts/migrate.ts",
     "typecheck": "nuxt typecheck",
     "test:e2e": "playwright test",
     "test:e2e:up": "podman compose -f docker-compose.e2e.yml up -d --build --wait",

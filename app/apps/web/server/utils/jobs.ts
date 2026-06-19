@@ -52,4 +52,10 @@ export async function streamJobEvents(event: H3Event, jobId: string): Promise<vo
   stream.onClosed(() => {
     unsubscribe()
   })
+
+  // Initiate the stream response: sets 200 + text/event-stream headers and
+  // pipes the underlying ReadableStream to the response. WITHOUT this call h3
+  // returns 204 No Content and the client never receives events — the SSE
+  // route was silently broken (returned 204) before this was added.
+  await stream.send()
 }

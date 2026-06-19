@@ -1,68 +1,75 @@
 -- moduleCad initial schema migration
--- Run with: psql "$DATABASE_URL" -f 0001_init.sql
--- (or `pnpm db:migrate` once tools/run-migration.mjs is wired in Phase 2)
+-- Run with: pnpm db:migrate (or the web container's entrypoint at boot).
 --
 -- This covers:
 --   1. better-auth tables (user, session, account, verification)
 --   2. moduleCad app tables (drawings, module_templates, module_instances)
 --
--- better-auth manages its own tables but is happy sharing a database with
--- our app data. Names/types follow better-auth's documented Postgres schema.
+-- IMPORTANT: better-auth v1.6.x queries its tables with CAMELCASE column
+-- names by default (emailVerified, createdAt, userId, ...). Postgres FOLDS
+-- unquoted identifiers to lowercase, so every camelCase column below is
+-- DOUBLE-QUOTED to preserve its case — otherwise Postgres stores
+-- "emailverified" and better-auth's quoted "emailVerified" misses it,
+-- throwing 'column "emailVerified" of relation "user" does not exist'.
+-- Field names are the authoritative defaults from
+-- @better-auth/core/dist/db/get-tables.mjs. The moduleCad APP tables use
+-- snake_case (our own SQL), and reference the unchanged user(id) PK.
 
 BEGIN;
 
 -- ──────────────────────────────────────────────────────────────────────────
--- better-auth core tables
+-- better-auth core tables (camelCase columns, double-quoted — DO NOT change)
 -- ──────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS "user" (
-  id          TEXT PRIMARY KEY,
-  name        TEXT NOT NULL,
-  email       TEXT NOT NULL UNIQUE,
-  email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-  image       TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  "id"            TEXT PRIMARY KEY,
+  "name"          TEXT NOT NULL,
+  "email"         TEXT NOT NULL UNIQUE,
+  "emailVerified" BOOLEAN NOT NULL DEFAULT FALSE,
+  "image"         TEXT,
+  "createdAt"     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt"     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS "session" (
-  id          TEXT PRIMARY KEY,
-  user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-  expires_at  TIMESTAMPTZ NOT NULL,
-  token       TEXT NOT NULL UNIQUE,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  ip_address  TEXT,
-  user_agent  TEXT
+  "id"          TEXT PRIMARY KEY,
+  "userId"      TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+  "expiresAt"   TIMESTAMPTZ NOT NULL,
+  "token"       TEXT NOT NULL UNIQUE,
+  "createdAt"   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt"   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "ipAddress"   TEXT,
+  "userAgent"   TEXT
 );
-CREATE INDEX IF NOT EXISTS session_user_id_idx ON "session"(user_id);
+CREATE INDEX IF NOT EXISTS session_userId_idx ON "session"("userId");
 
 CREATE TABLE IF NOT EXISTS "account" (
-  id              TEXT PRIMARY KEY,
-  user_id         TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-  account_id      TEXT NOT NULL,
-  provider_id     TEXT NOT NULL,
-  access_token    TEXT,
-  refresh_token   TEXT,
-  access_token_expires_at TIMESTAMPTZ,
-  refresh_token_expires_at TIMESTAMPTZ,
-  scope           TEXT,
-  id_token        TEXT,
-  password        TEXT,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  "id"                    TEXT PRIMARY KEY,
+  "userId"                TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+  "accountId"             TEXT NOT NULL,
+  "providerId"            TEXT NOT NULL,
+  "accessToken"           TEXT,
+  "refreshToken"          TEXT,
+  "accessTokenExpiresAt"  TIMESTAMPTZ,
+  "refreshTokenExpiresAt" TIMESTAMPTZ,
+  "scope"                 TEXT,
+  "idToken"               TEXT,
+  "password"              TEXT,
+  "createdAt"             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt"             TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS account_provider_account_idx
-  ON "account"(provider_id, account_id);
+CREATE UNIQUE INDEX IF NOT EXISTS account_providerId_accountId_idx
+  ON "account"("providerId", "accountId");
 
 CREATE TABLE IF NOT EXISTS "verification" (
-  id          TEXT PRIMARY KEY,
-  identifier  TEXT NOT NULL,
-  value       TEXT NOT NULL,
-  expires_at  TIMESTAMPTZ NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  "id"          TEXT PRIMARY KEY,
+  "identifier"  TEXT NOT NULL,
+  "value"       TEXT NOT NULL,
+  "expiresAt"   TIMESTAMPTZ NOT NULL,
+  "createdAt"   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt"   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- moduleCad app tables

@@ -1,0 +1,64 @@
+# moduleCad e2e stack — brought up by `pnpm test:e2e:up` (podman compose).
+#
+# Mirrors the prod topology but tuned for tests:
+#   - Postgres on tmpfs → every run starts UNMIGRATED (reproduces the prod
+#     failure mode; the web app's entrypoint plugin/health probe must bring
+#     it to 'up'). The dev server (nuxt dev) does NOT auto-migrate, so tests
+#     run `pnpm db:migrate` against DATABASE_URL as a setup step.
+#   - RustFS with no volume → no bucket until the web app's boot plugin
+#     creates it (exercises server/plugins/01.storage.ts).
+#   - dwg-converter built from the real Dockerfile (LibreDWG). Slow to build
+#     once; reused across runs.
+#
+# The web app itself runs on the HOST via playwright's webServer (nuxt dev),
+# NOT as a container here — so it can hot-reload during test iteration.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: modulecad
+      POSTGRES_USER: modulecad
+      POSTGRES_PASSWORD: modulecad
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U modulecad']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    # tmpfs: ephemeral storage → starts empty every `up`. Reproduces the
+    # "migration never ran" prod condition deterministically.
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: modulecad
+      RUSTFS_SECRET_KEY: e2e-key
+    ports:
+      - "9001:9000"
+
+  dwg-converter:
+    # Build context is the repo app/ root (two levels up from apps/web),
+    # matching what the prod compose does with context: ./app.
+    build:
+      context: ../../
+      dockerfile: apps/dwg-converter/Dockerfile
+    environment:
+      PORT: 8080
+      DWG_CONVERTER_SECRET: e2e-secret
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: modulecad
+      RUSTFS_SECRET_KEY: e2e-key
+    # The converter calls the dev server back (on the host) via
+    # WEB_INTERNAL_URL=http://host.containers.internal:3000. This mapping makes
+    # host.containers.internal resolve to the podman host gateway, since the
+    # converter runs in a container and the dev server runs on the host.
+    # (In prod compose this is http://web:3000 on the shared Docker network.)
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - rustfs
