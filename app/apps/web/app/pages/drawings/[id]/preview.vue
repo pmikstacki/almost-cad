@@ -10,7 +10,7 @@
           class="secondary"
           @click="exportAll"
         >
-          {{ exporting ? 'Exporting…' : 'Export (PDF/DXF/DWG)' }}
+          {{ exporting ? 'Exporting…' : 'Export (DXF/DWG)' }}
         </button>
         <button :disabled="reordering" @click="saveOrder" v-if="dirty">
           {{ reordering ? 'Saving…' : 'Save order' }}
@@ -20,7 +20,6 @@
       <div v-if="exportLinks" class="export-links">
         <a v-if="exportLinks.dxfUrl" :href="exportLinks.dxfUrl" target="_blank">Download DXF</a>
         <a v-if="exportLinks.dwgUrl" :href="exportLinks.dwgUrl" target="_blank">Download DWG</a>
-        <a v-if="exportLinks.pdfUrl" :href="exportLinks.pdfUrl" target="_blank">Download PDF</a>
       </div>
       <p v-if="exportError" class="muted err">{{ exportError }}</p>
 
@@ -117,7 +116,7 @@ const dirty = ref(false)
 const reordering = ref(false)
 const plotting = ref(false)
 const exporting = ref(false)
-const exportLinks = ref<{ dxfUrl: string; dwgUrl: string | null; pdfUrl: string | null } | null>(null)
+const exportLinks = ref<{ dxfUrl: string; dwgUrl: string | null } | null>(null)
 const exportError = ref('')
 
 // Drag state for reordering.
@@ -276,7 +275,7 @@ async function replot() {
   }
 }
 
-// ── Export (Phase 6): DXF client-side → server → DWG (converter) + PDF ──
+// ── Export (Phase 6): DXF client-side → server → DWG (converter) ──
 async function exportAll() {
   exporting.value = true
   exportError.value = ''
@@ -285,50 +284,11 @@ async function exportAll() {
     const layoutNames = modules.value.map((m) => m.name)
     const { exportAll: doExport } = useExport()
     const res = await doExport(drawingId, layoutNames)
-
-    // Render the multi-page PDF client-side via cad-pdf-plugin, then upload.
-    let pdfUrl: string | null = null
-    try {
-      const pdfBase64 = await renderPdfBase64(layoutNames)
-      if (pdfBase64) {
-        const up = await $fetch<{ url: string }>(
-          `/api/drawings/${drawingId}/export/pdf`,
-          { method: 'POST', body: { pdf: pdfBase64, layoutNames } }
-        )
-        pdfUrl = up.url
-      }
-    } catch {
-      /* PDF is best-effort; DXF/DWG are the round-trippable deliverables */
-    }
-
-    exportLinks.value = { ...res, pdfUrl }
+    exportLinks.value = res
   } catch (e: any) {
     exportError.value = e?.message ?? 'Export failed'
   } finally {
     exporting.value = false
-  }
-}
-
-/** Render all module layouts to a single PDF via cad-pdf-plugin. */
-async function renderPdfBase64(layoutNames: string[]): Promise<string | null> {
-  // cad-pdf-plugin exposes a renderer that operates on the AcDbDatabase. The
-  // exact API differs across releases; we import lazily and guard.
-  try {
-    const plugin = await import('@mlightcad/cad-pdf-plugin')
-    const doc = AcApDocManager.instance?.curDocument
-    const db = doc?.database as any
-    if (!db) return null
-    const Renderer = (plugin as any).AcPdfPlugin ?? (plugin as any).default ?? (plugin as any).PdfExporter
-    if (!Renderer) return null
-    const renderer = typeof Renderer === 'function' ? new Renderer() : Renderer
-    const out = await renderer.export?.(db, { layoutNames })
-    if (typeof out === 'string') return out
-    if (out?.base64) return out.base64
-    if (out instanceof ArrayBuffer) return btoa(String.fromCharCode(...new Uint8Array(out)))
-    if (out instanceof Uint8Array) return btoa(String.fromCharCode(...out))
-    return null
-  } catch {
-    return null
   }
 }
 </script>

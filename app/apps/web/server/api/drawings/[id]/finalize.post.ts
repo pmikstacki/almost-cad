@@ -107,14 +107,14 @@ export default defineEventHandler(async (event) => {
 
   const dxfKey = makeDxfKey(hash)
   const converterUrl = useRuntimeConfig().dwgConverterUrl
+  const callbackUrl = `${useRuntimeConfig().webInternalUrl}/api/jobs/${jobId}/update`
   $fetch(`${converterUrl}/convert`, {
     method: 'POST',
     body: {
       inputKey: canonicalKey,
       outputKey: dxfKey,
       direction: 'dwg2dxf',
-      callbackUrl: `${useRuntimeConfig().dwgConverterUrl
-        .replace('dwg-converter', 'web')}/api/jobs/${jobId}/update`.replace(':8080', ':3000'),
+      callbackUrl,
       bucket: bkt
     }
   }).catch((err) => {

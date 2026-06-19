@@ -121,9 +121,6 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.700.0
         version: 3.1071.0
-      '@mlightcad/cad-pdf-plugin':
-        specifier: workspace:*
-        version: link:../../packages/cad-pdf-plugin
       '@mlightcad/cad-simple-viewer':
         specifier: workspace:*
         version: link:../../packages/cad-simple-viewer
@@ -149,6 +146,9 @@ importers:
         specifier: ^4.4.0
         version: 4.6.4(vue@3.5.31(typescript@5.9.3))
     devDependencies:
+      '@playwright/test':
+        specifier: ^1.49.0
+        version: 1.59.1
       '@types/pg':
         specifier: ^8.11.0
         version: 8.20.0

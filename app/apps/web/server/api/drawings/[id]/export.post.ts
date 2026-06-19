@@ -10,10 +10,6 @@ import { PutObjectCommand } from '@aws-sdk/client-s3'
  *      `exports/<drawingId>/<hash>.dxf`.
  *   2. Dispatch DWG conversion (DXF → DWG) via the dwg-converter service.
  *   3. Return presigned GET URLs for DXF + DWG.
- *
- * PDF rendering happens client-side (cad-pdf-plugin runs in the browser
- * against the live AcDbDatabase); the client uploads the resulting PDF
- * separately via /api/drawings/:id/export/pdf.
  */
 export default defineEventHandler(async (event) => {
   const user = event.context.user
@@ -68,5 +64,5 @@ export default defineEventHandler(async (event) => {
   const dxfUrl = await presignGet(dxfKey, 3600)
   const dwgUrl = publicObjectUrl(dwgKey) // public; may 404 until conversion completes
 
-  return { dxfUrl, dwgUrl, pdfUrl: null }
+  return { dxfUrl, dwgUrl }
 })

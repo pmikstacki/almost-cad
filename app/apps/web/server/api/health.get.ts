@@ -5,23 +5,38 @@
  * `GET /api/health`. (The earlier `server/api/health/get.ts` registered a
  * route at `/api/health/get` instead — the bug behind the 404.)
  *
- * Verifies the Nuxt server responds AND the Postgres connection is live.
- * Returns 503 if the DB is unreachable so Coolify marks the service unhealthy.
+ * Verifies the Nuxt server responds AND that both dependencies are live:
+ * Postgres (own queries + better-auth) and RustFS (S3 object storage).
+ * Returns 503 if either is unreachable so Coolify marks the service
+ * unhealthy and restarts it.
  */
 export default defineEventHandler(async (event) => {
   let dbOk = false
+  let rustfsOk = false
+
   try {
-    const pool = db()
-    const res = await pool.query('SELECT 1 AS ok')
+    const res = await db().query('SELECT 1 AS ok')
     dbOk = res.rows[0]?.ok === 1
   } catch {
     dbOk = false
   }
 
-  setResponseStatus(event, dbOk ? 200 : 503)
+  // RustFS liveness: ListBuckets is a cheap S3 call that requires valid
+  // credentials + a reachable endpoint. Same client used for presigning.
+  try {
+    const { ListBucketsCommand } = await import('@aws-sdk/client-s3')
+    await storage().send(new ListBucketsCommand({}))
+    rustfsOk = true
+  } catch {
+    rustfsOk = false
+  }
+
+  const ok = dbOk && rustfsOk
+  setResponseStatus(event, ok ? 200 : 503)
   return {
-    status: dbOk ? 'ok' : 'degraded',
+    status: ok ? 'ok' : 'degraded',
     db: dbOk ? 'up' : 'down',
+    rustfs: rustfsOk ? 'up' : 'down',
     ts: new Date().toISOString()
   }
 })

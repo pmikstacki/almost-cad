@@ -11,13 +11,16 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "db:migrate": "node ../../tools/run-migration.mjs",
-    "typecheck": "nuxt typecheck"
+    "db:migrate": "node --experimental-strip-types server/scripts/migrate.ts",
+    "typecheck": "nuxt typecheck",
+    "test:e2e": "playwright test",
+    "test:e2e:up": "podman compose -f docker-compose.e2e.yml up -d --build --wait",
+    "test:e2e:down": "podman compose -f docker-compose.e2e.yml down -v",
+    "test:e2e:full": "pnpm test:e2e:up && pnpm test:e2e && pnpm test:e2e:down"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.700.0",
     "@aws-sdk/s3-request-presigner": "^3.700.0",
-    "@mlightcad/cad-pdf-plugin": "workspace:*",
     "@mlightcad/cad-simple-viewer": "workspace:*",
     "@mlightcad/cad-viewer": "workspace:*",
     "@modulecad/modules": "workspace:*",
@@ -28,6 +31,7 @@
     "vue-router": "^4.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@types/pg": "^8.11.0"
   }
 }

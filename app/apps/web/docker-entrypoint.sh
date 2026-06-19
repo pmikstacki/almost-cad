@@ -8,7 +8,7 @@
 set -e
 
 echo "[entrypoint] running DB migrations..."
-node --experimental-strip-types /app/migrate.js
+node --experimental-strip-types /app/migrate.ts
 
 echo "[entrypoint] starting Nitro server..."
 exec node /app/.output/server/index.mjs

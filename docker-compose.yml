@@ -36,8 +36,20 @@ services:
       - RUSTFS_BUCKET=modulecad
       - DWG_CONVERTER_URL=http://dwg-converter:8080
       - DWG_CONVERTER_SECRET=${DWG_CONVERTER_SECRET}
+      - WEB_INTERNAL_URL=http://web:3000
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - COOLIFY_FQDN
+    labels:
+      # Disable Traefik response buffering for the SSE stream route
+      # (/api/jobs/:id/events). Coolify's default buffering middleware closes
+      # SSE streams; this route-level rule keeps buffering on for everything
+      # else (uploads bypass Nuxt via presigned URLs anyway). See DEPLOY.md
+      # "Traefik buffering & SSE".
+      - coolify.proxy=true
+      - traefik.enable=true
+      - traefik.http.middlewares.modulecad-sse-nobuffer.buffering=false
+      - traefik.http.routers.modulecad-sse.rule=Path(`/api/jobs/{id}/events`)
+      - traefik.http.routers.modulecad-sse.middlewares=modulecad-sse-nobuffer
     depends_on:
       postgres:
         condition: service_healthy

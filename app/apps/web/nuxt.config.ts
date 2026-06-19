@@ -18,6 +18,11 @@ export default defineNuxtConfig({
     rustfsBucket: process.env.RUSTFS_BUCKET ?? 'modulecad',
     dwgConverterUrl:
       process.env.DWG_CONVERTER_URL ?? 'http://localhost:8080',
+    // Internal URL the dwg-converter should call back to reach this web
+    // service over the Docker network. Replaces the fragile string-replace
+    // hack that derived it from dwgConverterUrl.
+    webInternalUrl:
+      process.env.WEB_INTERNAL_URL ?? 'http://localhost:3000',
 
     // Public (exposed to the client via useRuntimeConfig().public).
     public: {
