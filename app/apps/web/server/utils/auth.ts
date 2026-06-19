@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth'
 import { Pool, type Pool as PgPool } from 'pg'
+import type { H3Event } from 'h3'
 
 /**
  * better-auth server instance for moduleCad.
@@ -48,9 +49,14 @@ export const auth = betterAuth({
  * factory function. Use `new Pool(...)`.
  */
 let _pool: PgPool | null = null
-export function db(): PgPool {
+/**
+ * Shared pg pool for our app queries (drawings/modules). Accepts an optional
+ * H3Event so we can resolve runtimeConfig per-request (Nuxt 4 recommends
+ * `useRuntimeConfig(event)` in server routes for correct override resolution).
+ */
+export function db(event?: H3Event): PgPool {
   if (!_pool) {
-    _pool = new Pool({ connectionString: useRuntimeConfig().databaseUrl })
+    _pool = new Pool({ connectionString: useRuntimeConfig(event).databaseUrl })
   }
   return _pool
 }

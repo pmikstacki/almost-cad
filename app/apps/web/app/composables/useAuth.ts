@@ -1,4 +1,4 @@
-import { createAuthClient } from 'better-auth/client'
+import { createAuthClient } from 'better-auth/vue'
 
 /**
  * better-auth browser client + reactive session composable.
@@ -6,8 +6,11 @@ import { createAuthClient } from 'better-auth/client'
  * Usage in pages/components:
  *   const { session, user, signIn, signUp, signOut, pending } = useAuth()
  *
- * SSR-safe: the client is created lazily (only in the browser) because
- * createAuthClient touches window.location. During SSR we skip it.
+ * Per the Better Auth Nuxt integration docs, import from 'better-auth/vue'
+ * (not 'better-auth/client') — the /vue re-export wires the session into Vue
+ * reactivity. SSR-safe: the client is created lazily (browser-only) because
+ * createAuthClient touches window.location. During SSR we skip it; there is
+ * no official better-auth-provided SSR guard, so this app owns the guard.
  */
 let authClient: ReturnType<typeof createAuthClient> | null = null
 function getClient() {
