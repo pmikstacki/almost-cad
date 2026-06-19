@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # @modulecad/dwg-converter — builds LibreDWG once (cached), ships binaries.
 #
 # Debian stable (bookworm) does NOT ship libredwg-tools in apt, and LibreDWG

@@ -8,7 +8,7 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://example.invalid/modulecad"
+    "url": "https://github.com/Cyber-Nomad-Collective/almost-cad"
   },
   "workspaces": [
     "packages/*",

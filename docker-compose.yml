@@ -19,6 +19,13 @@ services:
     build:
       context: ./app
       dockerfile: apps/web/Dockerfile
+      # BuildKit cache: persists layer cache on the Coolify host so rebuilds
+      # skip unchanged stages (esp. the vendored-dist COPY + Nuxt build). Local
+      # directory type — simplest for a single-host Coolify deploy.
+      cache_from:
+        - type=local,src=/data/coolify/build-cache/almost-cad/web
+      cache_to:
+        - type=local,dest=/data/coolify/build-cache/almost-cad/web,mode=max
     environment:
       - SERVICE_FQDN_WEB
       - DATABASE_URL=postgres://modulecad:${POSTGRES_PASSWORD}@postgres:5432/modulecad
@@ -67,6 +74,13 @@ services:
     build:
       context: ./app
       dockerfile: apps/dwg-converter/Dockerfile
+      # BuildKit cache: the LibreDWG source compile (~8 min) is the slowest
+      # layer. With a persistent local cache, it runs ONCE and is reused on
+      # every subsequent deploy unless LIBREDWG_VERSION or build deps change.
+      cache_from:
+        - type=local,src=/data/coolify/build-cache/almost-cad/dwg-converter
+      cache_to:
+        - type=local,dest=/data/coolify/build-cache/almost-cad/dwg-converter,mode=max
     environment:
       - PORT=8080
       - DWG_CONVERTER_SECRET=${DWG_CONVERTER_SECRET}

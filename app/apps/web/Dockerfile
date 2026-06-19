@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Multi-stage build for @modulecad/web (Nuxt 4).
 #
 # The compose build context is the repo root (app/), so paths below are
