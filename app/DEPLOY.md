@@ -133,9 +133,32 @@ docker compose exec postgres psql -U modulecad -d modulecad
 
 | Service | Check |
 |---|---|
-| `web` | `GET /api/health` → 200 with `{ db: 'up' }` (503 if Postgres down) |
+| `web` | `GET /api/health` → 200 with `{ status: 'ok', db: 'up', rustfs: 'up' }` (503 if either Postgres or RustFS is down) |
 | `dwg-converter` | `GET /health` → 200 with `{ status: 'ok', tools: {...} }` |
 | `postgres` | `pg_isready -U modulecad` |
-| `rustfs` | (add once RustFS exposes a health endpoint) |
+| `rustfs` | S3 liveness via the `web` health check (`ListBuckets`) — no separate RustFS health endpoint is exposed; the `web` container's `/api/health` is the source of truth. |
 
 Coolify uses these to gate deploy success and restart unhealthy containers.
+
+The `web` `/api/health` route probes both Postgres (`SELECT 1`) and RustFS
+(S3 `ListBuckets`) on every call. A boot plugin (`server/plugins/01.storage.ts`)
+also ensures the RustFS bucket exists before the first request, so a fresh
+RustFS deployment does not 404 the first presigned upload.
+
+## End-to-end tests
+
+The Playwright e2e suite (`app/apps/web/e2e/`) exercises the full stack
+against real Postgres (tmpfs → unmigrated every run) + RustFS +
+dwg-converter via `podman compose`:
+
+```
+cd app/apps/web
+pnpm test:e2e:full   # up → migrate → test → down
+```
+
+Requires podman with the `applehv`/`kvm` machine running and ~10GB free
+disk (the dwg-converter image builds LibreDWG from source). See
+`docker-compose.e2e.yml` and `playwright.config.ts`. The suite reproduces
+the prod failure modes (unmigrated DB, missing bucket, callback wiring)
+that static checks miss.
+

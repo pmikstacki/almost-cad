@@ -288,6 +288,94 @@ code: install LibreDWG in the dwg-converter image (the Dockerfile builds it
 from source — first build is slow), point DNS at the Coolify server, set the
 secrets in the Coolify UI, and run the DB migration. See `app/DEPLOY.md`.
 
+### Phase 8 — Full deploy fixes + e2e coverage
+
+Prod returned 500 on every auth + drawings endpoint. An end-to-end audit
+against the vendored source and deployment files found **one blocking root
+cause and several secondary bugs** that the Phase 1–7 work never exercised
+in a real environment.
+
+#### Fixed
+
+- **A1 — web container never booted.** `docker-entrypoint.sh` ran
+  `/app/migrate.js` but the Dockerfile copies `/app/migrate.ts` (a
+  `.ts`/`.js` typo). The entrypoint crashed on every restart loop, so no
+  server ever listened on :3000. Every route 500'd. Fixed: `.js` → `.ts`.
+- **A2 — converter callback URL was string-surgery.**
+  `finalize.post.ts` built the callback via `.replace('dwg-converter','web')
+  .replace(':8080',':3000')`. Replaced with a `WEB_INTERNAL_URL` env var
+  (runtimeConfig + compose + route).
+- **A3 — RustFS bucket never created.** `ensureBucket()` existed but was
+  never called; a fresh RustFS 404'd the first presign. Added
+  `server/plugins/01.storage.ts` to run it at boot.
+- **A4 — health route was DB-only.** Now also probes RustFS (S3
+  `ListBuckets`); returns 503 if either dependency is down.
+- **A5 — SSE buffering.** Added Traefik buffering-disable labels for the
+  SSE route in `docker-compose.yml`.
+- **A6 — PDF export was dead code.** The vendored `cad-pdf-plugin` renders
+  model-space only and downloads via the browser; the multi-layout PDF path
+  probed symbols that don't exist. Removed the dep, the `pdfUrl` field, the
+  `renderPdfBase64` function, and the `export/pdf.post` route. DXF + DWG
+  are the round-trippable deliverables.
+- **A7 — dangling migrate script.** `db:migrate` pointed at a non-existent
+  `tools/run-migration.mjs`. Now runs `server/scripts/migrate.ts` via
+  `--experimental-strip-types`.
+- **A8 — better-auth adapter never initialized (the real auth blocker).**
+  `database: { type: 'postgres', url }` is **not** a valid config shape in
+  better-auth v1.6.x — none of the kysely-adapter's dialect-selection
+  branches recognize it, so `createKyselyAdapter` returns null and throws
+  "Failed to initialize database adapter" on every request. Fixed: pass a
+  live `pg.Pool` instance. Root-caused by reading vendored
+  `@better-auth/kysely-adapter` source.
+- **A9 — auth schema columns were snake_case; better-auth queries camelCase.**
+  Postgres folds unquoted identifiers to lowercase, so the quoted camelCase
+  lookups (`"emailVerified"`, `"createdAt"`, `"userId"`) missed them
+  (`column "emailVerified" ... does not exist`). Fixed: double-quote every
+  camelCase column in the auth tables. App tables stay snake_case.
+- **A10 — SSE stream returned 204 No Content.** `streamJobEvents` never
+  called `stream.send()`, so h3 never set the 200 + `text/event-stream`
+  headers and the route silently returned 204 — no client ever received
+  events. Fixed: `await stream.send()`.
+
+#### Added (Phase B — e2e)
+
+- Playwright e2e suite (`app/apps/web/e2e/`): 23 tests across 6 files
+  (health, auth, drawings CRUD, upload→finalize→convert pipeline, SSE,
+  export) against real Postgres (tmpfs → starts unmigrated every run) +
+  RustFS + dwg-converter via `podman compose`.
+- `docker-compose.e2e.yml`, `playwright.config.ts`, `.env.e2e`, e2e
+  helpers (auth, db), and a `sample.dxf` fixture.
+- `pnpm test:e2e:full` (up → test → down) + `test:e2e:up`/`down` scripts.
+
+#### Verified
+
+- `pnpm build` (whole workspace) succeeds after all changes.
+- `podman compose -f docker-compose.yml config --quiet` passes.
+- **21 of 22 e2e tests green** in a real podman run: auth sign-up /
+  sign-in / get-session (the four prod-failing endpoints now return
+  200/null), drawings CRUD + authz (401/403/404), DXF upload→finalize→ready,
+  DWG finalize→processing→converter-callback, DXF+DWG export (no `pdfUrl`).
+- The DWG converter callback (A2) reached the dev server via
+  `host.containers.internal` after adding `--host 0.0.0.0` to the dev
+  server and `extra_hosts` to the e2e compose.
+- The `send()` SSE fix (A10) verified against the route directly.
+
+#### Blocked / unverified in this session
+
+- **Full e2e re-run blocked by an environment disk-full failure.** The host
+  disk hit 100% mid-run (podman image cache + npm cache, ~31GB), which
+  crashed the podman VM (applehv) into an unrecoverable state. The VM
+  could not be restarted in-session. ~8GB was recovered (npm cache purge)
+  and the build + suite-discovery re-verified, but the podman-based e2e
+  stack could not be brought back up to re-run the suite end-to-end. The
+  one test not yet observed green against the fixed code is the SSE
+  contract test (its `send()` fix is verified directly against the route).
+  Re-running `pnpm test:e2e:full` on a healthy host is the remaining
+  verification step.
+- Coolify-version-specific Traefik label syntax (A5) — decided at deploy
+  time against the live Coolify; the labels are in compose.
+
+
 ## [0.0.0] — pre-fork baseline
 
 Upstream `mlightcad/cad-viewer` @ HEAD of `main` (2026-06-18), MIT-licensed.

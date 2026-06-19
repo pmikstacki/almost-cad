@@ -88,6 +88,15 @@ Browsers talk to RustFS only via presigned URLs against its public FQDN.
 - Viewer stack: Vue 3.4+, Three.js 0.172+, element-plus 2.12+, vue-i18n 11.
 - App shell: Nuxt 4, better-auth, `@aws-sdk/client-s3` (RustFS client),
   Postgres 17.
+  - **better-auth v1.6.x** requires its database tables to use **camelCase**
+    column names (`emailVerified`, `createdAt`, `userId`, …) and these must
+    be **double-quoted** in the SQL migration so Postgres preserves their case
+    (unquoted identifiers fold to lowercase). The auth tables in
+    `0001_init.sql` follow this; the moduleCad app tables (`drawings`, etc.)
+    use snake_case since they are queried by our own SQL. If better-auth is
+    upgraded, regenerate the schema with `@better-auth/cli` and diff against
+    the migration. better-auth's `database` config takes a live `pg.Pool`
+    instance, not a `{ type, url }` object.
 
 ## Development setup
 
@@ -98,7 +107,8 @@ pnpm install                 # installs the whole workspace
 pnpm build                   # verifies all packages build (9 upstream + ours)
 pnpm dev                     # upstream full-viewer demo app
 pnpm dev:web                 # our Nuxt app (Phase 1+)
-pnpm test                    # jest
+pnpm test                    # jest (unit tests)
+pnpm --filter @modulecad/web test:e2e:full   # Playwright e2e (podman compose)
 ```
 
 To run the stack locally with storage + conversion:
